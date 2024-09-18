@@ -11,7 +11,8 @@
 #import "MetadataFuncs.h"
 #import "MetadataDebug.h"
 
-static NSString *demangleSwift(const char *const mangled) {
+// does not support symbolic references
+static NSString *demangleSwiftNonSymbolic(const char *const mangled) {
     size_t const length = swift_demangle_getDemangledName(mangled, NULL, 0);
     if (length == 0) {
         return nil;
@@ -71,9 +72,9 @@ static NSString *fullyQualifiedName(const struct TargetContextDescriptor *const 
     return localName;
 }
 
-static NSString *resolveType(const struct TargetFieldRecord *const record) {
-    const char *const potentialName = relativeDirectResolve(&record->mangledTypeName);
-    const char symbolFlag = potentialName[0];
+// supports symbolic references
+static NSString *demangleSwiftName(const char *mangledName) {
+    const char symbolFlag = mangledName[0];
     const struct TargetContextDescriptor *reference = NULL;
     
     if (symbolFlag == 0) {
@@ -81,10 +82,10 @@ static NSString *resolveType(const struct TargetFieldRecord *const record) {
     } else if (symbolFlag <= 0x17) {
         switch (symbolFlag) {
             case 1: {
-                reference = relativeDirectResolve((void *)&potentialName[1]);
+                reference = relativeDirectResolve((void *)&mangledName[1]);
             } break;
             case 2: {
-                const struct TargetContextDescriptor *const *const referenceRef = relativeDirectResolve((void *)&potentialName[1]);
+                const struct TargetContextDescriptor *const *const referenceRef = relativeDirectResolve((void *)&mangledName[1]);
                 // this is a linked symbol - only de-reference if this image is loaded with dyld
                 Dl_info addr_info; // we don't use `addr_info`, but if we pass NULL, `dladdr` returns 0
                 if (dladdr(referenceRef, &addr_info)) {
@@ -109,19 +110,19 @@ static NSString *resolveType(const struct TargetFieldRecord *const record) {
         return fullyQualifiedName(reference);
     }
     // https://github.com/swiftlang/swift/blob/586ac0953c15f775b93c8620b2b4433e111636ec/docs/ABI/Mangling.rst#mangling
-    if (stringHasPrefix(potentialName, "$s")
-        || stringHasPrefix(potentialName, "@__swiftmacro_")
-        || stringHasPrefix(potentialName, "_T0")
-        || stringHasPrefix(potentialName, "$S")) {
-        return demangleSwift(potentialName);
+    if (stringHasPrefix(mangledName, "$s")
+        || stringHasPrefix(mangledName, "@__swiftmacro_")
+        || stringHasPrefix(mangledName, "_T0")
+        || stringHasPrefix(mangledName, "$S")) {
+        return demangleSwiftNonSymbolic(mangledName);
     }
     // add the ABI stable mangling prefix
-    size_t len = strlen(potentialName);
+    size_t len = strlen(mangledName);
     size_t buffLen = 2 + len + 1;
     char *buff = malloc(buffLen);
     strncpy(buff, "$s", buffLen);
-    strncpy(buff + 2, potentialName, buffLen - 2);
-    NSString *result = demangleSwift(buff);
+    strncpy(buff + 2, mangledName, buffLen - 2);
+    NSString *result = demangleSwiftNonSymbolic(buff);
     free(buff);
     return result;
 }
@@ -177,11 +178,7 @@ int main(int argc, const char *argv[]) {
     unsigned long const itemCount = sectSize / sizeof(int32_t);
     const int32_t *const items = sectHead;
     for (unsigned long index = 0; index < itemCount; index++) {
-        int32_t const offset = items[index];
-        const void *const base = items + index;
-        
-        const void *const item = base + offset;
-        const struct TargetContextDescriptor *const casted = item;
+        const struct TargetContextDescriptor *const casted = relativeDirectResolve(&items[index]);
         switch (casted->flags.kind) {
             case ContextDescriptorKindModule: {
                 const struct TargetModuleContextDescriptor *const moduleDesc = (void *)casted;
@@ -217,13 +214,22 @@ int main(int argc, const char *argv[]) {
                 const struct TargetClassDescriptor *const classDesc = (void *)casted;
                 const struct TargetFieldDescriptor *const fieldsDesc = relativeDirectResolve(&classDesc->typeContext.fields);
                 
-                printf("class %s {\n", [fullyQualifiedName(casted) UTF8String]);
+                const char *const superclassMangled = relativeDirectResolve(&classDesc->superclassType);
+                if (superclassMangled != NULL) {
+                    printf("class %s: %s {\n",
+                           [fullyQualifiedName(casted) UTF8String],
+                           [demangleSwiftName(superclassMangled) UTF8String]);
+                } else {
+                    printf("class %s {\n", [fullyQualifiedName(casted) UTF8String]);
+                }
+                
                 if (fieldsDesc != NULL) {
                     const struct TargetFieldRecord *const fields = (const void *)(fieldsDesc + 1);
                     for (uint32_t i = 0; i < fieldsDesc->numFields; i++) {
                         const struct TargetFieldRecord *const field = fields + i;
                         
-                        NSString *name = resolveType(field);
+                        const char *const mangledName = relativeDirectResolve(&field->mangledTypeName);
+                        NSString *name = demangleSwiftName(mangledName);
                         
                         printf("\t%s %s: %s // flags: %" __UINT32_FMTu__ "\n",
                                (field->flags & TargetFieldRecordFlagsIsVar) ? "var" : "let",
@@ -244,7 +250,8 @@ int main(int argc, const char *argv[]) {
                     for (uint32_t i = 0; i < fieldsDesc->numFields; i++) {
                         const struct TargetFieldRecord *const field = fields + i;
                         
-                        NSString *name = resolveType(field);
+                        const char *const mangledName = relativeDirectResolve(&field->mangledTypeName);
+                        NSString *name = demangleSwiftName(mangledName);
                         
                         printf("\t%s %s: %s // flags: %" __UINT32_FMTu__ "\n",
                                (field->flags & TargetFieldRecordFlagsIsVar) ? "var" : "let",
