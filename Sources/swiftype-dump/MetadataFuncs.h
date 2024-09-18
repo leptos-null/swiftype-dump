@@ -13,6 +13,7 @@ static inline const void *_Nullable relativeDirectResolve(const TargetRelativeDi
     return base + offset;
 }
 
+// https://github.com/swiftlang/swift/blob/48015abbd89116163115e1d728e8478829c91271/include/swift/Basic/RelativePointer.h#L277
 static inline const void *_Nullable relativeContextResolve(const TargetRelativeContextPointer *_Nonnull const value) {
     const void *const base = value;
     int32_t const offset = *value;
