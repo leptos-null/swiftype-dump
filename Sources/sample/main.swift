@@ -47,3 +47,12 @@ public class SampleClass {
         self.sub = SubType()
     }
 }
+
+public class SampleSubclass: SampleClass {
+    var partTwo: SampleStruct
+    
+    init(partTwo: SampleStruct) {
+        self.partTwo = partTwo
+        super.init(id: partTwo.id.uuidString, location: 0)
+    }
+}
