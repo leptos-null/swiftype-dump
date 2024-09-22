@@ -272,9 +272,26 @@ int main(int argc, const char *argv[]) {
                     for (uint32_t i = 0; i < fieldsDesc->numFields; i++) {
                         const struct TargetFieldRecord *const field = fields + i;
                         
-                        printf("\tcase %s // flags: %" __UINT32_FMTu__ "\n",
-                               (const char *)relativeDirectResolve(&field->fieldName),
-                               field->flags);
+                        const char *const associativeTypes = relativeDirectResolve(&field->mangledTypeName);
+                        if (associativeTypes != NULL) {
+                            NSString *demangledName = demangleSwiftName(associativeTypes);
+                            if ([demangledName hasPrefix:@"("]) {
+                                assert([demangledName hasSuffix:@")"] && "name starts with '(' but doesn't end with ')'");
+                                printf("\tcase %s%s // flags: %" __UINT32_FMTu__ "\n",
+                                       (const char *)relativeDirectResolve(&field->fieldName),
+                                       [demangledName UTF8String],
+                                       field->flags);
+                            } else {
+                                printf("\tcase %s(%s) // flags: %" __UINT32_FMTu__ "\n",
+                                       (const char *)relativeDirectResolve(&field->fieldName),
+                                       [demangledName UTF8String],
+                                       field->flags);
+                            }
+                        } else {
+                            printf("\tcase %s // flags: %" __UINT32_FMTu__ "\n",
+                                   (const char *)relativeDirectResolve(&field->fieldName),
+                                   field->flags);
+                        }
                     }
                 }
                 printf("}\n");
