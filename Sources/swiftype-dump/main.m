@@ -224,9 +224,10 @@ int main(int argc, const char *argv[]) {
                 }
                 
                 if (fieldsDesc != NULL) {
-                    const struct TargetFieldRecord *const fields = (const void *)(fieldsDesc + 1);
+                    const void *const fields = (const void *)(fieldsDesc + 1);
                     for (uint32_t i = 0; i < fieldsDesc->numFields; i++) {
-                        const struct TargetFieldRecord *const field = fields + i;
+                        // byte arithmetic
+                        const struct TargetFieldRecord *const field = fields + (i * fieldsDesc->fieldRecordSize);
                         
                         const char *const mangledName = relativeDirectResolve(&field->mangledTypeName);
                         NSString *name = demangleSwiftName(mangledName);
@@ -246,9 +247,10 @@ int main(int argc, const char *argv[]) {
                 
                 printf("struct %s {\n", [fullyQualifiedName(casted) UTF8String]);
                 if (fieldsDesc != NULL) {
-                    const struct TargetFieldRecord *const fields = (const void *)(fieldsDesc + 1);
+                    const void *const fields = (const void *)(fieldsDesc + 1);
                     for (uint32_t i = 0; i < fieldsDesc->numFields; i++) {
-                        const struct TargetFieldRecord *const field = fields + i;
+                        // byte arithmetic
+                        const struct TargetFieldRecord *const field = fields + (i * fieldsDesc->fieldRecordSize);
                         
                         const char *const mangledName = relativeDirectResolve(&field->mangledTypeName);
                         NSString *name = demangleSwiftName(mangledName);
@@ -268,9 +270,10 @@ int main(int argc, const char *argv[]) {
                 
                 printf("enum %s {\n", [fullyQualifiedName(casted) UTF8String]);
                 if (fieldsDesc != NULL) {
-                    const struct TargetFieldRecord *const fields = (const void *)(fieldsDesc + 1);
+                    const void *const fields = (const void *)(fieldsDesc + 1);
                     for (uint32_t i = 0; i < fieldsDesc->numFields; i++) {
-                        const struct TargetFieldRecord *const field = fields + i;
+                        // byte arithmetic
+                        const struct TargetFieldRecord *const field = fields + (i * fieldsDesc->fieldRecordSize);
                         
                         const char *const associativeTypes = relativeDirectResolve(&field->mangledTypeName);
                         if (associativeTypes != NULL) {
